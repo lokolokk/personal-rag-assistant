@@ -1,0 +1,27 @@
+# Allowlist: no workstation stores, credentials, PDFs, tools, or history.
+**
+!backend/
+!backend/Dockerfile
+!backend/requirements.lock
+!backend/app/
+!backend/app/**
+!frontend/
+!frontend/Dockerfile
+!frontend/nginx.conf
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/index.html
+!frontend/tsconfig*.json
+!frontend/vite.config.ts
+!frontend/tailwind.config.js
+!frontend/postcss.config.js
+!frontend/src/
+!frontend/src/**
+**/__pycache__/**
+**/*.pyc
+**/.env*
+**/*.pem
+**/*.key
+**/*.pdf
+# Frontend tests stay in the builder because tsc checks the full source tree.
+# Only dist is copied into the static runtime image; backend tests are excluded.

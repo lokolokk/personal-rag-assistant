@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      BASE_DIR: /app
+      STORAGE_DIR: /app/storage
+      UPLOAD_DIR: /app/storage/uploads
+      CHROMA_PERSIST_DIR: /app/storage/chroma
+      OPENAI_API_KEY: ""
+      OPENAI_API_BASE: ""
+      OPENAI_BASE_URL: ""
+      RAG_COST_DEBUG: "0"
+      ENVIRONMENT: local-container
+      ANONYMIZED_TELEMETRY: "False"
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - rag-storage:/app/storage
+    networks: [private]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${RAG_PORT:-8080}:8080"
+    networks: [edge, private]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+networks:
+  # Only the static proxy has a route to the host-published port.
+  edge: {}
+  private:
+    internal: true
+volumes:
+  rag-storage: {}
