@@ -47,9 +47,8 @@ and maps citation references to their sources.
 
 ## Status
 
-The application has been tested locally. Deployment is pending.
+The application is deployed with a hosted frontend and a local backend.
 
-The current Docker configuration runs without provider credentials;
-model-generated answers are not enabled in that configuration.
+**Website:** [Personal RAG Assistant](https://personal-rag-assistant-ymwon04.pages.dev/)
 
-Access instructions will be added after deployment.
+Access requires an invitation. Contact the administrator or the person who shared this website to request an invitation link.
