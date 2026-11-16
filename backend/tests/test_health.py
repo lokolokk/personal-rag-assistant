@@ -62,7 +62,8 @@ def test_failed_initialization_stays_unready(boundary: str) -> None:
 
 
 def test_unwritable_storage_stays_unready() -> None:
-    with patch("tempfile._mkstemp_inner", side_effect=PermissionError("private location")):
+    # Patch the readiness probe's own call: Linux's TemporaryFile skips tempfile internals.
+    with patch("app.main.TemporaryFile", side_effect=PermissionError("private location")):
         with TestClient(create_application()) as client:
             assert client.get("/ready").status_code == 503
             assert client.get("/health").status_code == 200

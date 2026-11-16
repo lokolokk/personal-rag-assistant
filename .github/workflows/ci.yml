@@ -38,6 +38,12 @@ jobs:
         run: "python -m pip install --only-binary=:all: --require-hashes -r backend/requirements.lock"
       - name: Install dev tools
         run: python -m pip install -r backend/requirements-dev.txt
+      # Tests block network access by design. Download the tokenizer vocabulary once up
+      # front, the same way backend/Dockerfile does at build time.
+      - name: Pre-download tokenizer vocabulary
+        run: |
+          echo "TIKTOKEN_CACHE_DIR=$RUNNER_TEMP/tiktoken-cache" >> "$GITHUB_ENV"
+          TIKTOKEN_CACHE_DIR="$RUNNER_TEMP/tiktoken-cache" python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
       - name: Ruff lint
         run: python -m ruff check backend/ scripts/
       - name: Ruff format check
