@@ -1,5 +1,7 @@
 # Personal RAG Assistant
 
+[![CI](https://github.com/lokolokk/personal-rag-assistant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lokolokk/personal-rag-assistant/actions/workflows/ci.yml)
+
 A personal assistant for working with PDF documents.
 
 The interface supports PDF uploads, document selection, saved conversations
