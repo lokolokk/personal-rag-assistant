@@ -1,5 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { CitationDetail, DisplayMessage, StreamStatus } from '../types';
+import { apiBase, authenticatedFetch, invitedAccess, readSession } from '../services/session';
+import { request } from '../services/api';
 
 export interface UseChatStreamOptions {
   conversationId?: string | null;
@@ -68,6 +70,7 @@ function normalizeCitation(raw: Record<string, unknown>, index: number): Citatio
     pageNumber,
     sectionTitle,
     sourceText,
+    isTruncated: typeof raw.isTruncated === 'boolean' ? raw.isTruncated : undefined,
   };
 }
 
@@ -182,6 +185,15 @@ export function useChatStream({
       abortControllerRef.current = controller;
 
       try {
+        const accessToken = readSession()?.sessionToken;
+        let targetConversationId = conversationId;
+        if (invitedAccess() && !/^conv_[a-f0-9]{32}$/.test(targetConversationId)) {
+          const created = await request<{ conversationId: string }>('/conversations', {
+            method: 'POST', body: JSON.stringify({ documentIds: options?.documentIds ?? [] }),
+          });
+          targetConversationId = created.conversationId;
+          setConversationId(targetConversationId);
+        }
         const payload: Record<string, unknown> = {
           content: trimmed,
         };
@@ -189,8 +201,8 @@ export function useChatStream({
           payload.documentIds = options.documentIds;
         }
 
-        const endpoint = `/api/v1/conversations/${conversationId}/messages`;
-        const response = await fetch(endpoint, {
+        const endpoint = `${apiBase()}/conversations/${encodeURIComponent(targetConversationId)}/messages`;
+        const response = await authenticatedFetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -200,6 +212,21 @@ export function useChatStream({
         });
 
         if (!response.ok) {
+          if (response.status === 503) {
+            let providerUnavailable = false;
+            try {
+              const data: unknown = await response.json();
+              providerUnavailable = typeof data === 'object' && data !== null &&
+                'error' in data && typeof data.error === 'object' && data.error !== null &&
+                'code' in data.error && data.error.code === 'PROVIDER_UNAVAILABLE';
+            } catch {
+              // Proxies may return HTML rather than the API's JSON error envelope.
+              providerUnavailable = false;
+            }
+            throw new Error(providerUnavailable
+              ? 'Chat is unavailable because the AI provider is disabled or unconfigured.'
+              : 'Chat is temporarily unavailable (HTTP 503). Please try again later.');
+          }
           throw new Error(
             `Streaming request failed with HTTP ${response.status} ${response.statusText}`
           );
@@ -212,9 +239,15 @@ export function useChatStream({
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let completed = false;
+        let streamFailed = false;
 
         while (true) {
           const { value, done } = await reader.read();
+          if (invitedAccess() && accessToken !== readSession()?.sessionToken) {
+            await reader.cancel();
+            throw new Error('Workspace access changed.');
+          }
           if (done) {
             break;
           }
@@ -303,6 +336,7 @@ export function useChatStream({
                 // Ignore malformed citation payload
               }
             } else if (eventType === 'done') {
+              completed = true;
               setIsStreaming(false);
               setStatus('complete');
               setMessages((prev) =>
@@ -313,6 +347,7 @@ export function useChatStream({
                 )
               );
             } else if (eventType === 'error') {
+              streamFailed = true;
               try {
                 const parsed = JSON.parse(dataRaw) as {
                   error?: { message?: string } | string;
@@ -334,6 +369,9 @@ export function useChatStream({
         }
 
         // Finalize stream state after reader completes
+        if (invitedAccess() && (!completed || streamFailed)) {
+          throw new Error('Chat was interrupted. Please retry when the backend is available.');
+        }
         setIsStreaming(false);
         setStatus('complete');
         setMessages((prev) =>
@@ -359,7 +397,7 @@ export function useChatStream({
                   isStreaming: false,
                   status: 'error',
                   error: errMsg,
-                  content: msg.content || 'Failed to retrieve response due to connection error.',
+                  content: msg.content || errMsg,
                 }
               : msg
           )

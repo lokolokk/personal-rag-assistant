@@ -137,7 +137,7 @@ describe('CitationDrawer Component', () => {
       />
     );
 
-    const copyBtn = screen.getByRole('button', { name: /copy excerpt/i });
+    const copyBtn = screen.getByRole('button', { name: /copy preview/i });
     fireEvent.click(copyBtn);
 
     expect(writeTextMock).toHaveBeenCalledWith(sampleCitation1.sourceText);

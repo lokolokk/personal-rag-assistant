@@ -2,8 +2,9 @@ import React, { useState, useRef, DragEvent, ChangeEvent } from 'react';
 import { UploadCloud, X, FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { DocumentItem } from '../../types';
 import { uploadDocument } from '../../services/api';
+import { invitedAccess } from '../../services/session';
 
-const MAX_FILE_SIZE_BYTES = 30 * 1024 * 1024; // 30 MB
+const MAX_FILE_SIZE_BYTES = (invitedAccess() ? 10 : 30) * 1024 * 1024;
 
 export interface DocumentUploadModalProps {
   isOpen: boolean;
@@ -57,7 +58,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
     }
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setErrorMessage('File size exceeds 30MB limit.');
+      setErrorMessage(invitedAccess() ? 'File size exceeds 10 MiB limit.' : 'File size exceeds 30MB limit.');
       return false;
     }
 
@@ -216,7 +217,7 @@ export const DocumentUploadModal: React.FC<DocumentUploadModalProps> = ({
                   <span className="text-indigo-400 hover:underline">Click to browse</span> or drag & drop your PDF here
                 </p>
                 <p className="text-xs text-zinc-400 mt-1 font-mono">
-                  Only .pdf files up to 30MB supported
+                  Only .pdf files up to {invitedAccess() ? '10 MiB' : '30MB'} supported
                 </p>
               </div>
             </div>

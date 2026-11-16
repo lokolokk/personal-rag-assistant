@@ -4,6 +4,16 @@ import { MessageBubble } from './MessageBubble';
 import { DisplayMessage, CitationDetail } from '../../types';
 
 describe('MessageBubble component', () => {
+  it('does not show an active retrieval indicator after a failed request', () => {
+    const message: DisplayMessage = {
+      id: 'failed', role: 'assistant', content: 'Chat is unavailable.',
+      citations: [], createdAt: '2026-10-15T10:00:00Z', status: 'error', isStreaming: false,
+    };
+    render(<MessageBubble message={message} onSelectCitation={vi.fn()} />);
+    expect(screen.getByText('Chat is unavailable.')).toBeInTheDocument();
+    expect(screen.queryByText('Processing retrieval query...')).not.toBeInTheDocument();
+  });
+
   const sampleCitations: CitationDetail[] = [
     {
       citationIndex: 1,
@@ -169,7 +179,7 @@ describe('MessageBubble component', () => {
     expect(badge).toBeInTheDocument();
 
     fireEvent.click(badge);
-    expect(handleSelectCitation).toHaveBeenCalledWith(sampleCitations[0]);
+    expect(handleSelectCitation).toHaveBeenCalledWith(sampleCitations[0], citationMsg.id);
   });
 
   it('renders streaming blinking cursor when message is currently streaming', () => {

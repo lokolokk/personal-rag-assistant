@@ -14,7 +14,7 @@ export interface ChatContainerProps {
   selectedDocCount: number;
   onSendMessage: (query: string) => void | Promise<void>;
   onStopStream: () => void;
-  onSelectCitation?: (citation: CitationDetail) => void;
+  onSelectCitation?: (citation: CitationDetail, messageId: string) => void;
   onOpenSpecs?: () => void;
   className?: string;
 }
