@@ -131,3 +131,39 @@ Thumbs.db
 /scripts/prepare_publication.py
 /scripts/publication.json
 /backend/tests/test_publication.py
+
+# Private permanent runtime (credentials, guarded controls, tunnel binary).
+/deploy/local-runtime/
+/frontend/dist-admin/
+
+# Local test temp output and Windows shortcuts.
+backend/.pytest-h-temp/
+*.lnk
+
+# Invitation administrator dashboard stays private.
+/backend/app/admin.py
+/backend/app/api/admin.py
+/backend/app/schemas/admin.py
+/backend/app/services/admin_auth.py
+/backend/app/services/invitation_admin.py
+/backend/tests/test_admin_auth.py
+/backend/tests/test_invitation_admin.py
+/frontend/admin.html
+/frontend/src/admin/
+/frontend/vite.admin.config.ts
+/compose.admin.yaml
+/deploy/admin/
+/scripts/build_admin_release.py
+/scripts/Start-RAG-Admin.ps1
+/scripts/deployment/admin_preservation.py
+
+# Personal Windows launcher and provider smoke-test tools stay private.
+/scripts/Start-RAG.ps1
+/scripts/Install-Start-RAG-Shortcut.ps1
+/scripts/deployment/start_rag_preflight.py
+/scripts/deployment/start-rag-runtime.sha256.json
+/scripts/deployment/tests/
+/scripts/deployment/qwen_smoke_guard.py
+/scripts/deployment/qwen_smoke_runtime.py
+/backend/tests/test_qwen_smoke_guard.py
+/backend/tests/test_qwen_smoke_runtime.py
