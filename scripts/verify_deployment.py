@@ -274,8 +274,10 @@ def main() -> int:
         report["state"] = original_state
         report["sse"] = verify_sse(url)
         run(*command, "stop")
-        # Quiescent whole-volume backup: no live Chroma/JSON writers.
-        run(
+        # Quiescent whole-volume backup: no live Chroma/JSON writers. The archive streams
+        # to stdout, so the non-root container never needs write access to a host folder
+        # (Linux enforces bind-mount ownership; Docker Desktop does not).
+        backup_command = [
             "docker",
             "run",
             "--rm",
@@ -285,15 +287,30 @@ def main() -> int:
             "10001:10001",
             "-v",
             f"{volume}:/source:ro",
-            "-v",
-            f"{evidence}:/backup",
             images["backend"],
             "tar",
             "-cf",
-            "/backup/storage.tar",
+            "-",
             "-C",
             "/source",
             ".",
+        ]
+        with (evidence / "storage.tar").open("wb") as archive:
+            backup = subprocess.run(
+                backup_command,
+                cwd=ROOT,
+                env=env,
+                stdout=archive,
+                stderr=subprocess.PIPE,
+                timeout=120,
+            )
+        with (evidence / "commands.log").open("a", encoding="utf-8") as log:
+            log.write(json.dumps(backup_command) + "\n")
+            log.write(backup.stderr.decode("utf-8", "replace"))
+            log.write(f"\nexit={backup.returncode}\n")
+        require(
+            backup.returncode == 0,
+            f"Command failed ({backup.returncode}): {backup_command[:4]}; see commands.log",
         )
         restore = project + "-restore"
         restore_volume = restore + "_rag-storage"
