@@ -1,9 +1,10 @@
 /**
  * Base HTTP client and typed endpoints for Conversational Document RAG backend API.
  */
-import { DocumentItem } from '../types';
+import { DocumentItem, FullPassage } from '../types';
+import { apiBase, authenticatedFetch } from './session';
 
-const API_BASE_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api/v1';
+const API_BASE_URL: string = apiBase();
 
 export class ApiError extends Error {
   status: number;
@@ -17,17 +18,17 @@ export class ApiError extends Error {
   }
 }
 
-export async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(endpoint: string, options: RequestInit = {}, reportOffline = true): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
 
-  const response = await fetch(url, {
+  const response = await authenticatedFetch(url, {
     ...options,
     headers,
-  });
+  }, false, reportOffline);
 
   if (!response.ok) {
     const rawText = await response.text();
@@ -46,6 +47,7 @@ export async function request<T>(endpoint: string, options: RequestInit = {}): P
     throw new ApiError(detailMessage, response.status, errorData);
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -69,12 +71,21 @@ export async function fetchDocuments(): Promise<DocumentItem[]> {
   return rawList.map(normalizeDocumentItem);
 }
 
+export async function fetchFullPassage(chunkId: string, signal?: AbortSignal): Promise<FullPassage> {
+  const result = await request<FullPassage>(`/chunks/${encodeURIComponent(chunkId)}`, { signal }, false);
+  if (result.chunkId !== chunkId || typeof result.text !== 'string' ||
+      typeof result.filename !== 'string' || !Number.isInteger(result.pageNumber)) {
+    throw new Error('Invalid passage response');
+  }
+  return result;
+}
+
 export async function uploadDocument(file: File): Promise<DocumentItem> {
   const url = `${API_BASE_URL}/documents/upload`;
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(url, {
+  const response = await authenticatedFetch(url, {
     method: 'POST',
     body: formData,
   });

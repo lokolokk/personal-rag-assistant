@@ -4,6 +4,8 @@ import App from './App';
 import CostStation from './components/debug/CostStation';
 import { costDebugEnabled } from './services/costDebug';
 import './index.css';
+import AccessGate from './components/access/AccessGate';
+import { invitedAccess } from './services/session';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -12,6 +14,6 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    {costDebugEnabled() ? <CostStation /> : <App />}
+    {invitedAccess() ? <AccessGate /> : costDebugEnabled() ? <CostStation /> : <App />}
   </React.StrictMode>
 );

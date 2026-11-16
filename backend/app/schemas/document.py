@@ -114,3 +114,12 @@ class DocumentDeleteResponse(BaseModel):
             self.document_id = self.id
         if not self.documentId:
             self.documentId = self.id
+
+
+class FullPassage(BaseModel):
+    """Original stored source returned only within an authenticated workspace."""
+
+    chunkId: str
+    text: str
+    filename: str
+    pageNumber: int

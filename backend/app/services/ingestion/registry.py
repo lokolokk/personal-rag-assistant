@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -18,7 +19,8 @@ class DocumentRegistry:
     in storage/documents.json for instantaneous UI listing without scanning the vector database.
     """
 
-    def __init__(self, registry_path: Path | str | None = None) -> None:
+    def __init__(self, registry_path: Path | str | None = None, strict: bool = False) -> None:
+        self._strict = strict
         settings = get_settings()
         if registry_path is not None:
             self._path = Path(registry_path)
@@ -36,16 +38,24 @@ class DocumentRegistry:
         """Read and parse document records from disk under lock."""
         with self._lock:
             if not self._path.exists():
+                if self._strict:
+                    raise OSError("Missing workspace document registry")
                 return []
             try:
                 content = self._path.read_text(encoding="utf-8")
                 if not content.strip():
+                    if self._strict:
+                        raise ValueError("Empty workspace document registry")
                     return []
                 raw_items = json.loads(content)
                 if not isinstance(raw_items, list):
+                    if self._strict:
+                        raise ValueError("Invalid workspace document registry")
                     return []
                 return [DocumentItem.model_validate(item) for item in raw_items]
             except Exception as err:
+                if self._strict:
+                    raise
                 logger.warning("Failed to load document registry from %s: %s", self._path, err)
                 return []
 
@@ -57,6 +67,9 @@ class DocumentRegistry:
             tmp_path = self._path.with_suffix(".tmp")
             try:
                 tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                if self._strict:
+                    with tmp_path.open("r+b") as pending:
+                        os.fsync(pending.fileno())
                 tmp_path.replace(self._path)
             except Exception as err:
                 logger.error("Failed to persist document registry to %s: %s", self._path, err)

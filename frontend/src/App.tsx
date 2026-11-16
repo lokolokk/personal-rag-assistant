@@ -52,10 +52,12 @@ export default function App(): React.JSX.Element {
   });
 
   const [activeCitation, setActiveCitation] = useState<CitationDetail | null>(null);
+  const [citationMessageId, setCitationMessageId] = useState<string | null>(null);
   const [isCitationDrawerOpen, setIsCitationDrawerOpen] = useState<boolean>(false);
 
-  const handleSelectCitation = (citation: CitationDetail): void => {
+  const handleSelectCitation = (citation: CitationDetail, messageId: string): void => {
     setActiveCitation(citation);
+    setCitationMessageId(messageId);
     setIsCitationDrawerOpen(true);
   };
 
@@ -63,18 +65,12 @@ export default function App(): React.JSX.Element {
     setIsCitationDrawerOpen(false);
   };
 
-  // Derive citations from the message that contains activeCitation
+  // Citation numbers and even chunks repeat: the click owns the answer selection.
   const activeMessageCitations = useMemo(() => {
     if (!activeCitation) return [];
-    const parentMsg = messages.find((m) =>
-      m.citations.some(
-        (c) =>
-          c.citationIndex === activeCitation.citationIndex ||
-          (c.chunkId && c.chunkId === activeCitation.chunkId)
-      )
-    );
+    const parentMsg = messages.find((m) => m.id === citationMessageId);
     return parentMsg && parentMsg.citations.length > 0 ? parentMsg.citations : [activeCitation];
-  }, [messages, activeCitation]);
+  }, [messages, activeCitation, citationMessageId]);
 
   // Load conversations list
   const loadConversations = useCallback(async (): Promise<void> => {
@@ -277,6 +273,7 @@ export default function App(): React.JSX.Element {
               pageNumber: citPage,
               sectionTitle: citSection,
               sourceText: citSourceText,
+              isTruncated: typeof citObj.isTruncated === 'boolean' ? citObj.isTruncated : undefined,
             };
           }),
           createdAt: new Date().toISOString(),
@@ -459,6 +456,7 @@ export default function App(): React.JSX.Element {
 
       {/* Interactive Citation Inspector Slide-over Drawer */}
       <CitationDrawer
+        key={citationMessageId}
         isOpen={isCitationDrawerOpen}
         citation={activeCitation}
         citations={activeMessageCitations}

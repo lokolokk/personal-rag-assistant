@@ -74,6 +74,23 @@ def test_bm25_add_and_count(bm25_store: BM25Store) -> None:
     assert bm25_store.count() == 3
 
 
+def test_get_chunks_for_pages_is_limited_to_exact_document_page_pairs(
+    bm25_store: BM25Store,
+) -> None:
+    selected = create_sample_chunk("selected", "doc1", "Table 1 caption", page_number=2)
+    same_document_other_page = create_sample_chunk(
+        "other-page", "doc1", "A different page", page_number=3
+    )
+    other_document_same_page = create_sample_chunk(
+        "other-document", "doc2", "A separate paper", page_number=2
+    )
+    bm25_store.add_chunks([selected, same_document_other_page, other_document_same_page])
+
+    result = bm25_store.get_chunks_for_pages({("doc1", 2)})
+
+    assert [chunk.chunk_id for chunk in result] == ["selected"]
+
+
 def test_bm25_exact_keyword_and_acronym_retrieval(bm25_store: BM25Store) -> None:
     """Test that rare acronyms and table numbers rank exact matches #1."""
     chunks = [

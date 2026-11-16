@@ -170,6 +170,7 @@ describe('useChatStream hook', () => {
         sectionTitle: '3. Architecture',
         quote: 'The Transformer follows this overall architecture...',
         chunkId: 'doc_att_p3_c1',
+        isTruncated: true,
       },
     ];
 
@@ -205,6 +206,7 @@ describe('useChatStream hook', () => {
     expect(assistantMsg.citations[0].citationIndex).toBe(1);
     expect(assistantMsg.citations[0].filename).toBe('attention.pdf');
     expect(assistantMsg.citations[0].pageNumber).toBe(3);
+    expect(assistantMsg.citations[0].isTruncated).toBe(true);
     expect(assistantMsg.citations[0].sourceText).toBe(
       'The Transformer follows this overall architecture...'
     );
@@ -250,6 +252,24 @@ describe('useChatStream hook', () => {
 
     expect(streamCancelled).toBe(true);
     expect(result.current.isStreaming).toBe(false);
+  });
+
+  it.each([
+    ['disabled provider', JSON.stringify({ error: { code: 'PROVIDER_UNAVAILABLE', message: 'Live provider is disabled or unconfigured.' } }), 'Chat is unavailable because the AI provider is disabled or unconfigured.'],
+    ['proxy outage', '<html>Unavailable</html>', 'Chat is temporarily unavailable (HTTP 503). Please try again later.'],
+    ['unknown server error', JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'private server details' } }), 'Chat is temporarily unavailable (HTTP 503). Please try again later.'],
+  ])('explains %s without calling it a connection error or retrying', async (_name, body, expected) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(body, { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() => useChatStream({ conversationId: 'conv_123' }));
+
+    await act(async () => { await result.current.sendMessage('Failing query'); });
+
+    expect(result.current.error).toBe(expected);
+    expect(result.current.messages[result.current.messages.length - 1]?.content).toBe(expected);
+    expect(result.current.messages[result.current.messages.length - 1]?.status).toBe('error');
+    expect(result.current.isStreaming).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('handles network failure and sets error message gracefully', async () => {

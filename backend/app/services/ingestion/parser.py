@@ -10,6 +10,7 @@ import pdfplumber
 
 from app.core.exceptions import DocumentParsingError
 from app.schemas.document import ParsedDocument, ParsedPage, TextBlock
+from app.services.ingestion.table_geometry import following_caption, ruled_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -139,11 +140,18 @@ def _detect_tables_from_page(
         while j < len(h_lines):
             nxt = h_lines[j]
             if abs(nxt["x0"] - line["x0"]) < 8 and abs(nxt["x1"] - line["x1"]) < 8:
-                if nxt["top"] - matching[-1]["bottom"] < 400:
+                gap = nxt["top"] - matching[-1]["bottom"]
+                between = (
+                    plumber_page.crop(
+                        (line["x0"], matching[-1]["bottom"], line["x1"], nxt["top"])
+                    ).extract_text()
+                    if gap > 0
+                    else ""
+                )
+                if gap < 100 and not (between and "Table " in between):
                     matching.append(nxt)
-                    if len(matching) == 3:
-                        j += 1
-                        break
+                else:
+                    break
             j += 1
 
         if len(matching) >= 2:
@@ -157,12 +165,15 @@ def _detect_tables_from_page(
             if not already:
                 try:
                     crop = plumber_page.crop(bbox)
-                    matrix = crop.extract_table(
+                    matrix = ruled_matrix(plumber_page, bbox, rules) or crop.extract_table(
                         {"vertical_strategy": "text", "horizontal_strategy": "text"}
                     )
                     if matrix and len(matrix) >= 2 and any(len(r) >= 2 for r in matrix):
                         md = serialize_table_to_markdown(matrix)
                         if md:
+                            caption = following_caption(plumber_page, bbox)
+                            if caption:
+                                md = caption + "\n" + md
                             # Replace any smaller detected table fully contained inside this table
                             detected = [(b, m) for b, m in detected if not is_contained(b, bbox)]
                             detected.append((bbox, md))

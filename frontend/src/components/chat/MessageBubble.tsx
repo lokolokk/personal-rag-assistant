@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Fragment, useState } from 'react';
 import {
   Copy,
   Check,
@@ -11,10 +11,12 @@ import {
 } from 'lucide-react';
 import { DisplayMessage, CitationDetail, StreamStatus } from '../../types';
 import { CitationBadge } from './CitationBadge';
+import { MathExpression } from './MathExpression';
+import { invitedAccess } from '../../services/session';
 
 export interface MessageBubbleProps {
   message: DisplayMessage;
-  onSelectCitation?: (citation: CitationDetail) => void;
+  onSelectCitation?: (citation: CitationDetail, messageId: string) => void;
   className?: string;
 }
 
@@ -50,7 +52,7 @@ export function MessageBubble({
 
   // Render animated status stepper during retrieval lifecycle
   const renderStatusPill = (status?: StreamStatus): React.JSX.Element | null => {
-    if (!status || status === 'idle' || status === 'complete' || status === 'streaming') {
+    if (!status || status === 'idle' || status === 'complete' || status === 'streaming' || status === 'error') {
       return null;
     }
 
@@ -100,7 +102,7 @@ export function MessageBubble({
   };
 
   // Helper to parse citations within inline text spans
-  const renderInlineWithCitations = (text: string): React.ReactNode[] => {
+  const renderCitedText = (text: string): React.ReactNode[] => {
     // Matches bracketed citations like [1], [2], or [1: attention.pdf, p.4]
     const citationRegex = /\[(\d+)(?::[^\]]+)?\]/g;
     const elements: React.ReactNode[] = [];
@@ -126,9 +128,12 @@ export function MessageBubble({
           <CitationBadge
             key={`cit_${citIndex}_${match.index}`}
             citation={foundCitation}
-            onSelect={onSelectCitation}
+            onSelect={(citation) => onSelectCitation?.(citation, message.id)}
           />
         );
+      } else if (invitedAccess()) {
+        // A draft reference becomes clickable only after validated citation data arrives.
+        elements.push(<span key={`unverified_${match.index}`}>{match[0]}</span>);
       } else {
         // Fallback badge if citation detail metadata is not present in citations list
         const fallbackCitation: CitationDetail = {
@@ -144,7 +149,7 @@ export function MessageBubble({
           <CitationBadge
             key={`cit_fallback_${citIndex}_${match.index}`}
             citation={fallbackCitation}
-            onSelect={onSelectCitation}
+            onSelect={(citation) => onSelectCitation?.(citation, message.id)}
           />
         );
       }
@@ -161,6 +166,33 @@ export function MessageBubble({
     }
 
     return elements;
+  };
+
+  // Protect code and math before parsing citations or emphasis inside them.
+  const renderInlineWithCitations = (text: string): React.ReactNode[] => {
+    const tokens = /`[^`]*`|\$\$([^]*?)\$\$|\\\(([^]*?)\\\)|\$([^\n$]+)\$/g;
+    const result: React.ReactNode[] = [];
+    let start = 0;
+    for (const match of text.matchAll(tokens)) {
+      const offset = match.index;
+      const preceding = text.slice(0, offset).match(/\\+$/)?.[0].length ?? 0;
+      if (preceding % 2) continue;
+      const source = match[1] ?? match[2] ?? match[3];
+      // Single dollars require a math signal; prices such as $5 or $5 and $10 stay text.
+      if (match[3] !== undefined &&
+          (source.trim() !== source || !/[=+*/^_{}\\<>−-]|[A-Za-z]/.test(source) ||
+           /^\d[\d,.]*(?:\s*[-+*/]\s*)?$/.test(source) ||
+           /\b(?:and|or|to|for)\b/.test(source))) continue;
+      result.push(<Fragment key={`plain_${offset}`}>{renderCitedText(text.slice(start, offset))}</Fragment>);
+      if (match[0].startsWith('`')) {
+        result.push(<code key={`inline_code_${offset}`} className="px-1.5 py-0.5 rounded text-xs font-mono bg-zinc-800 text-indigo-300">{match[0].slice(1, -1)}</code>);
+      } else {
+        result.push(<MathExpression key={`math_${offset}`} source={source} display={match[1] !== undefined} />);
+      }
+      start = offset + match[0].length;
+    }
+    result.push(<Fragment key={`tail_${start}`}>{renderCitedText(text.slice(start))}</Fragment>);
+    return result;
   };
 
   // Helper for bold, italic, inline code formatting
@@ -205,6 +237,20 @@ export function MessageBubble({
 
     while (idx < lines.length) {
       const line = lines[idx];
+
+      // Consume display math as one block, leaving unmatched streaming delimiters literal.
+      const opener = line.trim().startsWith('$$') ? '$$' : line.trim().startsWith('\\[') ? '\\[' : null;
+      if (opener) {
+        const closer = opener === '$$' ? '$$' : '\\]';
+        const remaining = lines.slice(idx).join('\n').trimStart();
+        const end = remaining.indexOf(closer, opener.length);
+        if (end >= 0 && !remaining.slice(end + closer.length).split('\n')[0].trim()) {
+          const consumed = remaining.slice(0, end + closer.length).split('\n').length;
+          blocks.push(<MathExpression key={`display_${idx}`} source={remaining.slice(opener.length, end).trim()} display />);
+          idx += consumed;
+          continue;
+        }
+      }
 
       // Code Block (```lang)
       if (line.trim().startsWith('```')) {

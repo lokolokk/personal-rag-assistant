@@ -23,12 +23,20 @@ export interface CitationDetail {
   pageNumber: number;
   sectionTitle: string;
   sourceText: string;
+  isTruncated?: boolean;
   id?: number;
   quote?: string;
   page_number?: number;
   section_title?: string;
   chunk_id?: string;
   document_id?: string;
+}
+
+export interface FullPassage {
+  chunkId: string;
+  text: string;
+  filename: string;
+  pageNumber: number;
 }
 
 export type StreamStatus =

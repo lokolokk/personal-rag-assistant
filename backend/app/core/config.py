@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Conversational Document RAG"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"
+    LIVE_ACCESS: bool = False
+    LIVE_PROVIDER_ENABLED: bool = False
 
     # CORS Configuration
     CORS_ORIGINS: list[str] = [

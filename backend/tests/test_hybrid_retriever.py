@@ -1,5 +1,6 @@
 """Unit and integration tests for Scoped Hybrid Retriever Core (Layer 1) & LangGraph Dispatcher."""
 
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,60 @@ from app.services.retrieval.hybrid import (
     set_hybrid_retriever,
 )
 from app.services.retrieval.vector_store import DeterministicEmbeddingFunction, VectorStore
+
+
+def test_hybrid_keeps_direct_evidence_continuation_and_traces_ranks(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    vector = MagicMock(spec=VectorStore)
+    sparse = MagicMock(spec=BM25Store)
+    intro = _create_scored_chunk("intro", "manual", "The recovery workflow has these phases:", 0.9)
+    answer = _create_chunk(
+        "list", "manual", "1. INSPECTION examines state.\n2. VALIDATION checks health."
+    )
+    answer.metadata.char_start = intro.metadata.char_end + 1
+    answer.metadata.char_end = answer.metadata.char_start + len(answer.content)
+    other = _create_scored_chunk("other", "manual", "Another ranked passage.", 0.8)
+    vector.query.return_value = [intro, other]
+    sparse.query.return_value = [intro, other]
+    sparse.get_chunks_for_pages.return_value = [intro, answer, other]
+    with caplog.at_level(logging.DEBUG, logger="app.services.retrieval.hybrid"):
+        result = HybridRetriever(vector, sparse).retrieve("workflow phases", top_k=2)
+    assert [c.chunk_id for c in result] == ["intro", "list"]
+    assert "dense" in caplog.text and "sparse" in caplog.text and "fused" in caplog.text
+    assert "workflow phases" not in caplog.text
+
+
+def test_hybrid_promotes_matching_table_retrieved_by_only_one_search_lane() -> None:
+    vector = MagicMock(spec=VectorStore)
+    sparse = MagicMock(spec=BM25Store)
+    shared = [
+        _create_scored_chunk(f"shared-{rank}", "paper", f"Shared result {rank}.", 1 / rank)
+        for rank in range(1, 9)
+    ]
+    table = _create_scored_chunk(
+        "table",
+        "paper",
+        "| Fold | Train | Dev | Test | All |\n| Train | 809 | 300 | 300 |",
+        0.1,
+    )
+    table.metadata.is_table = True
+    table.metadata.char_start = 130
+    table.metadata.char_end = 200
+    caption = _create_chunk("caption", "paper", "Table 2: Dataset split sizes")
+    caption.metadata.char_start = 100
+    caption.metadata.char_end = 129
+    vector.query.return_value = [*shared, table]
+    sparse.query.return_value = shared
+    sparse.get_chunks_for_pages.return_value = [caption, table]
+
+    result = HybridRetriever(vector, sparse).retrieve(
+        "How many claims are in the training, development and test splits?", top_k=5
+    )
+
+    ids = [chunk.chunk_id for chunk in result]
+    assert "table" in ids and "caption" in ids
+    assert len(ids) == 5
 
 
 def _create_chunk(chunk_id: str, doc_id: str, content: str) -> DocumentChunk:

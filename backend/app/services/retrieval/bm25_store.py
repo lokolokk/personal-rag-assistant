@@ -75,6 +75,18 @@ class BM25Store:
         """Return total number of chunks stored in memory."""
         return len(self._chunks)
 
+    def get_chunks_for_pages(self, pages: set[tuple[str, int]]) -> list[DocumentChunk]:
+        """Return existing chunks for selected document/page pairs in this workspace."""
+        if not pages:
+            return []
+        chunk_ids = {
+            chunk_id
+            for document_id, page_number in pages
+            for chunk_id in self._doc_chunks.get(document_id, set())
+            if self._chunks[chunk_id].metadata.page_number == page_number
+        }
+        return [self._chunks[chunk_id] for chunk_id in sorted(chunk_ids)]
+
     def query(
         self,
         query_text: str,

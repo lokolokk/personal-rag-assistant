@@ -11,6 +11,7 @@ import {
   Hash,
 } from 'lucide-react';
 import { CitationDetail } from '../../types';
+import { FullPassageDialog } from './FullPassageDialog';
 
 export interface CitationDrawerProps {
   isOpen: boolean;
@@ -30,10 +31,13 @@ export function CitationDrawer({
   className = '',
 }: CitationDrawerProps): React.JSX.Element | null {
   const [copied, setCopied] = useState<boolean>(false);
+  const [passageCitation, setPassageCitation] = useState<CitationDetail | null>(null);
+  const [copyError, setCopyError] = useState(false);
+  const passageOpen = isOpen && passageCitation === citation && citation !== null;
 
   // Close on Escape key press
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || passageOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -45,7 +49,13 @@ export function CitationDrawer({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, passageOpen]);
+
+  useEffect(() => {
+    setCopied(false);
+    setCopyError(false);
+    setPassageCitation(null);
+  }, [citation, isOpen]);
 
   if (!isOpen || !citation) {
     return null;
@@ -55,8 +65,7 @@ export function CitationDrawer({
   const citationList = citations.length > 0 ? citations : [citation];
   const currentIndex = citationList.findIndex(
     (c) =>
-      c.citationIndex === citation.citationIndex ||
-      (c.chunkId && c.chunkId === citation.chunkId)
+      c.citationIndex === citation.citationIndex && c.chunkId === citation.chunkId
   );
   const activeIndex = currentIndex >= 0 ? currentIndex : 0;
   const totalCitations = citationList.length;
@@ -80,9 +89,10 @@ export function CitationDrawer({
     try {
       await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
+      setCopyError(false);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Ignore clipboard write failures in test/restricted environments
+      setCopyError(true);
     }
   };
 
@@ -272,15 +282,15 @@ export function CitationDrawer({
             {/* Excerpt Header */}
             <div className="bg-[#141417] px-3.5 py-2 border-b border-zinc-800 flex items-center justify-between">
               <span className="text-[10px] font-mono font-semibold text-zinc-300 uppercase tracking-wider">
-                Original Source Excerpt
+                {citation.isTruncated ? 'Source preview — shortened' : 'Source preview'}
               </span>
 
               <button
                 type="button"
                 onClick={() => void handleCopyExcerpt()}
-                aria-label="Copy Excerpt"
+                aria-label="Copy preview"
                 className="flex items-center space-x-1 px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-200 border border-zinc-700/60 transition-colors cursor-pointer"
-                title="Copy source passage to clipboard"
+                title="Copy preview to clipboard"
               >
                 {copied ? (
                   <>
@@ -290,7 +300,7 @@ export function CitationDrawer({
                 ) : (
                   <>
                     <Copy className="w-3 h-3 text-zinc-400" />
-                    <span>Copy Excerpt</span>
+                    <span>Copy preview</span>
                   </>
                 )}
               </button>
@@ -301,6 +311,12 @@ export function CitationDrawer({
               <pre className="font-mono text-xs text-zinc-200 leading-relaxed whitespace-pre-wrap select-text break-words">
                 {excerptText}
               </pre>
+              {copyError && <p role="alert">Could not copy. Select the preview and copy it manually.</p>}
+              <button type="button" onClick={() => setPassageCitation(citation)}
+                disabled={!citation.chunkId}
+                className="mt-3 px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs disabled:opacity-50">
+                View full passage
+              </button>
             </div>
           </div>
 
@@ -341,6 +357,7 @@ export function CitationDrawer({
           </button>
         </div>
       </aside>
+      {passageOpen && <FullPassageDialog citation={citation} onClose={() => setPassageCitation(null)} />}
     </>
   );
 }

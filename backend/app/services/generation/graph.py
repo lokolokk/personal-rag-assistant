@@ -20,6 +20,7 @@ Assembles the LangGraph StateGraph in two modes:
 Strictly conforms to docs/RULES.md, docs/DESIGN.md Section 3, and docs/ARCHITECTURE.md.
 """
 
+import re
 import threading
 from typing import Any
 
@@ -221,6 +222,70 @@ def reset_conversational_rag_graph() -> None:
         _COMPILED_GRAPH = None
         _COMPILED_STREAMLINED_GRAPH = None
         _COMPILED_LEGACY_GRAPH = None
+
+
+def compile_workspace_graph(bundle: Any, provider: Any) -> CompiledConversationalRAGGraph:
+    """Compile request-bound live nodes; legacy singleton graph remains unchanged."""
+    from langgraph.config import get_stream_writer
+
+    from app.core.exceptions import AppException
+    from app.services.generation.grounding import FALLBACK_RESPONSE, GroundedGenerator
+    from app.services.retrieval.hybrid import HybridRetriever
+    from app.services.retrieval.reformulator import QueryReformulator
+    from app.services.workspaces import RequestBM25Store, RequestVectorStore
+
+    retriever = HybridRetriever(RequestVectorStore(bundle, provider), RequestBM25Store(bundle))
+    reformulator = QueryReformulator(llm_client=provider.reformulate)
+    generator = GroundedGenerator(stream_fn=lambda prompt, _chunks: provider.generate(prompt))
+
+    def retrieve(state: ConversationalRAGState) -> dict[str, Any]:
+        provider.check()
+        ids = state.get("active_document_ids", [])
+        bundle.validate_documents(ids)
+        chunks = retriever.retrieve(state.get("standalone_query", ""), ids)
+        bundle.check_candidates(chunks, ids)
+        return {"retrieved_chunks": chunks}
+
+    def generate(state: ConversationalRAGState) -> dict[str, Any]:
+        provider.check()
+        bundle.check_candidates(
+            state.get("retrieved_chunks", []), state.get("active_document_ids", [])
+        )
+        result = generator.generate_node(state, writer=get_stream_writer())
+        response = str(result["response_text"])
+        if response != FALLBACK_RESPONSE:
+            references = {
+                int(match.group(1)) for match in re.finditer(r"\[(\d+)(?::[^\]]+)?\]", response)
+            }
+            resolved = {int(citation["id"]) for citation in result["citations"]}
+            if not references or references != resolved:
+                raise AppException("Answer citation validation failed.", "GROUNDING_INVALID", 503)
+        return result
+
+    workflow = StateGraph(ConversationalRAGState)
+    workflow.add_node("bypass_reformulation", bypass_reformulation_node)
+    workflow.add_node("reformulate_query", reformulator.reformulate_node)
+    workflow.add_node("scoped_hybrid_retriever", retrieve)
+    workflow.add_node("generate_grounded_response", generate)
+    workflow.add_node("inability_fallback", inability_fallback_node)
+    workflow.add_conditional_edges(
+        START,
+        route_reformulation_entry,
+        {"bypass_reformulation": "bypass_reformulation", "reformulate_query": "reformulate_query"},
+    )
+    workflow.add_edge("bypass_reformulation", "scoped_hybrid_retriever")
+    workflow.add_edge("reformulate_query", "scoped_hybrid_retriever")
+    workflow.add_conditional_edges(
+        "scoped_hybrid_retriever",
+        route_retrieval_candidate_quality,
+        {
+            "generate_grounded_response": "generate_grounded_response",
+            "inability_fallback": "inability_fallback",
+        },
+    )
+    workflow.add_edge("generate_grounded_response", END)
+    workflow.add_edge("inability_fallback", END)
+    return workflow.compile()
 
 
 def run_conversational_rag_graph(

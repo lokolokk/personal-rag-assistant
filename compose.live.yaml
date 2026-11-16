@@ -1,0 +1,52 @@
+name: raglive
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      BASE_DIR: /app
+      STORAGE_DIR: /app/storage
+      UPLOAD_DIR: /app/storage/uploads
+      CHROMA_PERSIST_DIR: /app/storage/chroma
+      LIVE_ACCESS: "true"
+      LIVE_PROVIDER_ENABLED: ${LIVE_PROVIDER_ENABLED:-false}
+      OPENAI_API_KEY: ${LIVE_QWEN_API_KEY:-}
+      OPENAI_API_BASE: ${LIVE_QWEN_API_BASE:-}
+      OPENAI_BASE_URL: ""
+      LLM_MODEL: qwen3.8-flash
+      EMBEDDING_MODEL: qwen3.7-text-embedding
+      EMBEDDING_DIMENSION: "1024"
+      CORS_ORIGINS: ${LIVE_FRONTEND_ORIGIN:-[]}
+      RAG_COST_DEBUG: "0"
+      ENVIRONMENT: invited-live
+      ANONYMIZED_TELEMETRY: "False"
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - live-storage:/app/storage
+    networks: [private, provider-egress]
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.28.0-alpine@sha256:c97ff0bf7cbae369953c6da1232ec14ad9f971d66360c5698db0856a4cd657a0
+    volumes:
+      - ./deploy/live/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${LIVE_PORT:-8081}:8080"
+    networks: [private, edge]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+networks:
+  private:
+    internal: true
+  provider-egress: {}
+  edge: {}
+volumes:
+  live-storage: {}
