@@ -1,6 +1,7 @@
 """Bounded PDF parsing process and recoverable workspace mutations."""
 
 import json
+import os
 import subprocess
 import sys
 import uuid
@@ -16,17 +17,26 @@ from app.services.ingestion.parser import PDFParser
 from app.services.live_provider import BoundProvider
 from app.services.workspaces import Workspace, WorkspaceManager, durable_bytes
 
+# Directory that contains the `app` package, so the parser child process can import it
+# no matter which working directory the server was started from.
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+
 
 def parse_pdf(content: bytes, filename: str, root: Path) -> ParsedDocument:
     pdf = root / "staging/input.pdf"
     result = root / "staging/parsed.json"
     pdf.write_bytes(content)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        path for path in (str(BACKEND_ROOT), env.get("PYTHONPATH")) if path
+    )
     try:
         process = subprocess.run(
             [sys.executable, "-m", __name__, str(pdf), str(result), filename],
             capture_output=True,
             timeout=30,
             check=False,
+            env=env,
         )
         if (
             process.returncode != 0
