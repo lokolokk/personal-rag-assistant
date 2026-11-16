@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import threading
 from collections.abc import Sequence
@@ -56,7 +57,8 @@ class ConversationRegistry:
     restoring messages across server restarts, and deleting conversations.
     """
 
-    def __init__(self, registry_path: Path | str | None = None) -> None:
+    def __init__(self, registry_path: Path | str | None = None, strict: bool = False) -> None:
+        self._strict = strict
         settings = get_settings()
         if registry_path is not None:
             self._path = Path(registry_path)
@@ -74,16 +76,24 @@ class ConversationRegistry:
         """Read and parse conversation records from disk under lock."""
         with self._lock:
             if not self._path.exists():
+                if self._strict:
+                    raise OSError("Missing workspace conversation registry")
                 return []
             try:
                 content = self._path.read_text(encoding="utf-8")
                 if not content.strip():
+                    if self._strict:
+                        raise ValueError("Empty workspace conversation registry")
                     return []
                 raw_items = json.loads(content)
                 if not isinstance(raw_items, list):
+                    if self._strict:
+                        raise ValueError("Invalid workspace conversation registry")
                     return []
                 return [ConversationSummaryItem.model_validate(item) for item in raw_items]
             except Exception as err:
+                if self._strict:
+                    raise
                 logger.warning("Failed to load conversation registry from %s: %s", self._path, err)
                 return []
 
@@ -91,10 +101,18 @@ class ConversationRegistry:
         """Save conversation records atomically to disk under lock."""
         with self._lock:
             self._ensure_parent_dir()
+            if self._strict:
+                for item in items:
+                    item.message_count = len(item.messages)
+                    item.messageCount = item.message_count
+                    item.updatedAt = item.updated_at.isoformat()
             data = [item.model_dump() for item in items]
             tmp_path = self._path.with_suffix(".tmp")
             try:
                 tmp_path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+                if self._strict:
+                    with tmp_path.open("r+b") as pending:
+                        os.fsync(pending.fileno())
                 tmp_path.replace(self._path)
             except Exception as err:
                 logger.error("Failed to persist conversation registry to %s: %s", self._path, err)

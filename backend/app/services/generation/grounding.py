@@ -242,6 +242,7 @@ def resolve_citations(
                     "sectionTitle": clean_section,
                     "quote": excerpt,
                     "sourceText": excerpt,
+                    "isTruncated": len(content.strip()) > 200,
                 }
             )
 

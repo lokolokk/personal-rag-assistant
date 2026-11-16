@@ -14,6 +14,8 @@ from app.core.config import Settings, get_settings
 from app.schemas.chat import ConversationalRAGState
 from app.schemas.document import ScoredChunk
 from app.services.retrieval.bm25_store import BM25Store, get_bm25_store
+from app.services.retrieval.continuation import assemble_continuation_context
+from app.services.retrieval.table_context import prioritize_table_context
 from app.services.retrieval.vector_store import VectorStore, get_vector_store
 
 logger = logging.getLogger(__name__)
@@ -74,15 +76,17 @@ class HybridRetriever:
         document_ids: list[str] | None = None,
         top_k: int | None = None,
     ) -> list[ScoredChunk]:
-        """Perform concurrent hybrid search and return top-K fused ScoredChunk objects.
+        """Fuse hybrid anchors and assemble at most K bounded evidence chunks.
 
         Args:
             query: User search query or reformulated standalone query.
             document_ids: Optional document IDs filter. None or empty list searches all docs.
-            top_k: Number of fused chunks to return. Defaults to settings.TOP_K.
+            top_k: Maximum context chunks to return. Defaults to settings.TOP_K.
 
         Returns:
-            List of ScoredChunk objects sorted descending by RRF score.
+            RRF-ordered anchors with eligible direct list continuations prioritized.
+            Added continuations have score zero: they are evidence neighbors, not
+            independently ranked hits. Private DEBUG trace retains the fused ranks.
         """
         cleaned_query = query.strip()
         if not cleaned_query:
@@ -148,7 +152,38 @@ class HybridRetriever:
         # Sort descending by RRF score with deterministic secondary sort on chunk_id
         fused_chunks.sort(key=lambda c: (c.score, c.chunk_id), reverse=True)
 
-        return fused_chunks[:target_top_k]
+        anchors = fused_chunks[: max(0, target_top_k)]
+        context_candidates = (
+            [chunk for chunk in fused_chunks if chunk.metadata.is_table] if target_top_k > 0 else []
+        )
+        context_candidates.extend(
+            chunk
+            for chunk in anchors
+            if not chunk.metadata.is_table and chunk.content.rstrip().endswith(":")
+        )
+        pages = {
+            (chunk.metadata.document_id, chunk.metadata.page_number) for chunk in context_candidates
+        }
+        available = self._bm25_store.get_chunks_for_pages(pages) if pages else []
+        anchors = prioritize_table_context(
+            cleaned_query,
+            fused_chunks,
+            available,
+            target_top_k,
+            max_tokens=self._settings.CHUNK_SIZE * target_top_k,
+        )
+        context = assemble_continuation_context(
+            anchors, available, target_top_k, self._settings.CHUNK_SIZE * target_top_k
+        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "retrieval dense=%s sparse=%s fused=%s final_context=%s",
+                [(i, c.chunk_id, c.score) for i, c in enumerate(dense_results, 1)],
+                [(i, c.chunk_id, c.score) for i, c in enumerate(sparse_results, 1)],
+                [(i, c.chunk_id, c.score) for i, c in enumerate(fused_chunks, 1)],
+                [c.chunk_id for c in context],
+            )
+        return context
 
 
 # Global cached singleton instance for HybridRetriever

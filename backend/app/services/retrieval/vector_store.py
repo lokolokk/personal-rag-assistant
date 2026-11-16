@@ -240,6 +240,17 @@ class VectorStore:
         """Delete all chunks belonging to a document_id."""
         self._collection.delete(where={"document_id": document_id})
 
+    def get_chunk(self, chunk_id: str) -> DocumentChunk | None:
+        """Read an exact stored ID without embedding or similarity search."""
+        result = self._collection.get(ids=[chunk_id], include=["documents", "metadatas"])
+        if not result["ids"]:
+            return None
+        return DocumentChunk(
+            chunk_id=result["ids"][0],
+            content=result["documents"][0],
+            metadata=ChunkMetadata.model_validate(result["metadatas"][0]),
+        )
+
     def get_all_chunks(self) -> list[DocumentChunk]:
         """Retrieve all stored chunks from the persistent vector collection."""
         total = self.count()
@@ -277,6 +288,27 @@ class VectorStore:
     def count(self) -> int:
         """Return the total number of chunks stored in this collection."""
         return int(self._collection.count())
+
+    def document_snapshot(self, document_id: str) -> tuple[list[DocumentChunk], list[list[float]]]:
+        """Export a document with its vectors for provider-free mutation recovery."""
+        result = self._collection.get(
+            where={"document_id": document_id}, include=["documents", "metadatas", "embeddings"]
+        )
+        chunks = [
+            DocumentChunk(
+                chunk_id=cid,
+                content=result["documents"][i],
+                metadata=ChunkMetadata.model_validate(result["metadatas"][i]),
+            )
+            for i, cid in enumerate(result["ids"])
+        ]
+        embeddings = result["embeddings"]
+        vectors = (
+            [[float(value) for value in vector] for vector in embeddings]
+            if embeddings is not None
+            else []
+        )
+        return chunks, vectors
 
     def reset(self) -> None:
         """Clear all records in the collection by recreating it."""

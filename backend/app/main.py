@@ -173,4 +173,19 @@ def create_application() -> FastAPI:
     return application
 
 
-app = create_application()
+def configured_application() -> FastAPI:
+    settings = get_settings()
+    if not settings.LIVE_ACCESS:
+        return create_application()
+    from app.api.v1.live import create_live_application
+    from app.services.live_provider import QwenProvider
+
+    if settings.EMBEDDING_DIMENSION != 1024:
+        raise ValueError("Live embedding dimension must remain 1024")
+    provider = QwenProvider(settings) if settings.LIVE_PROVIDER_ENABLED else None
+    return create_live_application(
+        settings.resolved_storage_dir / "live", provider, settings.CORS_ORIGINS
+    )
+
+
+app = configured_application()

@@ -12,6 +12,7 @@ from app.schemas.document import (
     ParsedDocument,
     ParsedPage,
 )
+from app.services.ingestion.structure import introduced_list_items
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +241,8 @@ class StructuralChunker:
             # Case 2: Check for Major Section Headings
             # The block might be a single heading line or start with a heading line
             lines = [ln.strip() for ln in cleaned_text.splitlines() if ln.strip()]
-            if lines and self._is_heading(lines[0]):
+            list_items = introduced_list_items(lines, "\n\n".join(buffer_text_parts))
+            if lines and 0 not in list_items and self._is_heading(lines[0]):
                 # Flush preceding text under previous section
                 flush_buffer()
 
@@ -254,7 +256,7 @@ class StructuralChunker:
             # Check if an internal line in the block is a heading
             has_internal_heading = False
             for idx, line in enumerate(lines):
-                if idx > 0 and self._is_heading(line):
+                if idx > 0 and idx not in list_items and self._is_heading(line):
                     # Split block before this heading
                     pre_text = "\n".join(lines[:idx]).strip()
                     post_text = "\n".join(lines[idx:]).strip()
