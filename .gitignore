@@ -167,3 +167,12 @@ backend/.pytest-h-temp/
 /scripts/deployment/qwen_smoke_runtime.py
 /backend/tests/test_qwen_smoke_guard.py
 /backend/tests/test_qwen_smoke_runtime.py
+
+# Terraform: state and plans stay local (D2). The lock file IS committed.
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+infra/tfplan
+infra/*.tfvars
+infra/crash.log

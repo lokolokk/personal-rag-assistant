@@ -1,0 +1,16 @@
+[Unit]
+Description=RAG stack (backend, proxy, tunnel)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=900
+TimeoutStopSec=180
+ExecStart=/opt/rag/bin/rag-up.sh
+ExecStop=/opt/rag/bin/rag-down.sh
+
+[Install]
+WantedBy=multi-user.target
