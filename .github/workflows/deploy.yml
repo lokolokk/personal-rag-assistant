@@ -1,0 +1,124 @@
+# Continuous deployment of the backend to AWS.
+# After CI succeeds on main: build the image, push it to ECR, tell the server which version to run.
+# If the server is stopped, it picks the new version up on its next boot.
+name: Deploy backend
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# The workflow itself only reads the code; AWS access comes from the environment secrets below.
+permissions:
+  contents: read
+
+# One deploy at a time. A running deploy is never cancelled halfway.
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  AWS_DEFAULT_REGION: ap-southeast-2
+  ECR_REPOSITORY: rag-backend
+  # Public address of the backend (already visible in the website build).
+  PUBLIC_URL: https://ebook-overcook-subsystem.ngrok-free.dev
+
+jobs:
+  deploy:
+    name: build, push and deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: aws-deploy
+    # Only main, only after a green CI push run from this repository (or a manual run on main).
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      INSTANCE_ID: ${{ vars.INSTANCE_ID }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - name: Work out the image name
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          TAG="${SOURCE_SHA::12}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "REGISTRY=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_ENV"
+          echo "IMAGE=${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${TAG}" >> "$GITHUB_ENV"
+
+      - name: Build and push the image (skipped if this version is already stored)
+        run: |
+          set -euo pipefail
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" > /dev/null 2>&1; then
+            echo "Image $TAG already in ECR, skipping build."
+            exit 0
+          fi
+          docker build --platform linux/amd64 -f backend/Dockerfile -t "$IMAGE" .
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+          docker push "$IMAGE"
+
+      - name: Set the version the server should run
+        run: |
+          aws ssm put-parameter --name /rag/desired_image_tag --value "$TAG" --type String --overwrite > /dev/null
+          echo "desired_image_tag set to $TAG"
+
+      - name: Restart the stack if the server is running
+        id: restart
+        run: |
+          set -uo pipefail
+          if ! OUT="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript \
+                --parameters 'commands=["systemctl restart rag-stack"]' --timeout-seconds 600 \
+                --query Command.CommandId --output text 2>&1)"; then
+            if echo "$OUT" | grep -q InvalidInstanceId; then
+              echo "Server is stopped. It will start version $TAG on its next boot."
+              echo "running=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "$OUT"
+            exit 1
+          fi
+          echo "running=true" >> "$GITHUB_OUTPUT"
+          for _ in $(seq 1 60); do
+            STATUS="$(aws ssm get-command-invocation --command-id "$OUT" --instance-id "$INSTANCE_ID" \
+                      --query Status --output text 2>/dev/null || echo Pending)"
+            case "$STATUS" in
+              Success) echo "Stack restarted."; exit 0 ;;
+              Failed|Cancelled|TimedOut) echo "Restart command ended with: $STATUS"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "Timed out waiting for the restart command."; exit 1
+
+      - name: Wait until the public address is ready
+        if: steps.restart.outputs.running == 'true'
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS -H "ngrok-skip-browser-warning: 1" "$PUBLIC_URL/ready"; then
+              echo; echo "Backend is ready."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Backend did not become ready in time."; exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deploy backend"
+            echo "- Version: \`${TAG:-unknown}\` (commit \`${SOURCE_SHA::12}\`)"
+            echo "- Server running during deploy: \`${{ steps.restart.outputs.running || 'unknown' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
