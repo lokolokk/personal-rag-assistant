@@ -1,0 +1,64 @@
+# AWS runtime (Task 8.3). Image-based: CI builds the backend image and pushes it to ECR.
+# Values come from /run/rag/env, written at boot by deploy/aws/rag-up.sh from SSM Parameter Store.
+# Nothing is published on a host port: the only way in is the outbound ngrok tunnel.
+name: rag
+services:
+  backend:
+    image: ${RAG_IMAGE:?set by rag-up.sh}
+    restart: unless-stopped
+    environment:
+      BASE_DIR: /app
+      STORAGE_DIR: /app/storage
+      UPLOAD_DIR: /app/storage/uploads
+      CHROMA_PERSIST_DIR: /app/storage/chroma
+      LIVE_ACCESS: "true"
+      LIVE_PROVIDER_ENABLED: ${LIVE_PROVIDER_ENABLED:-false}
+      OPENAI_API_KEY: ${LIVE_QWEN_API_KEY:-}
+      OPENAI_API_BASE: ${LIVE_QWEN_API_BASE:-}
+      OPENAI_BASE_URL: ""
+      LLM_MODEL: qwen3.8-flash
+      EMBEDDING_MODEL: qwen3.7-text-embedding
+      EMBEDDING_DIMENSION: "1024"
+      CORS_ORIGINS: ${LIVE_FRONTEND_ORIGIN:-[]}
+      RAG_COST_DEBUG: "0"
+      ENVIRONMENT: invited-live
+      ANONYMIZED_TELEMETRY: "False"
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - live-storage:/app/storage
+    networks: [private, provider-egress]
+    cpus: 2
+    mem_limit: 1536m # t3.small has 2 GiB; leave room for the OS, Docker and swap
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    init: true
+  proxy:
+    image: nginxinc/nginx-unprivileged:1.28.0-alpine@sha256:c97ff0bf7cbae369953c6da1232ec14ad9f971d66360c5698db0856a4cd657a0
+    restart: unless-stopped
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [private, edge]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  tunnel:
+    image: ngrok/ngrok:3@sha256:ff3b5c3674432d14a786349908b7bdf28ee56c25662637afcbe7180d471993ef
+    restart: unless-stopped
+    command: ["http", "--log=stdout", "--url=${NGROK_DOMAIN:?set by rag-up.sh}", "proxy:8080"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?set by rag-up.sh}
+    depends_on:
+      - proxy
+    networks: [edge]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+networks:
+  private:
+    internal: true
+  provider-egress: {}
+  edge: {}
+volumes:
+  live-storage: {}

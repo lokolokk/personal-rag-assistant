@@ -1,0 +1,38 @@
+#cloud-config
+# First-boot setup for the RAG server. Files are written first, then bootstrap.sh installs Docker
+# and starts the stack. Built by infra/bootstrap.tf; contains no secrets.
+write_files:
+  - path: /etc/rag/rag.conf
+    permissions: "0644"
+    encoding: b64
+    content: ${rag_conf_b64}
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    encoding: b64
+    content: ${daemon_json_b64}
+  - path: /etc/systemd/system/rag-stack.service
+    permissions: "0644"
+    encoding: b64
+    content: ${service_b64}
+  - path: /opt/rag/compose.aws.yaml
+    permissions: "0644"
+    encoding: b64
+    content: ${compose_b64}
+  - path: /opt/rag/nginx.conf
+    permissions: "0644"
+    encoding: b64
+    content: ${nginx_b64}
+  - path: /opt/rag/bin/rag-up.sh
+    permissions: "0750"
+    encoding: b64
+    content: ${rag_up_b64}
+  - path: /opt/rag/bin/rag-down.sh
+    permissions: "0750"
+    encoding: b64
+    content: ${rag_down_b64}
+  - path: /opt/rag/bin/bootstrap.sh
+    permissions: "0750"
+    encoding: b64
+    content: ${bootstrap_b64}
+runcmd:
+  - [bash, /opt/rag/bin/bootstrap.sh]
