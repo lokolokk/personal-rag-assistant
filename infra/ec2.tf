@@ -7,8 +7,10 @@ resource "aws_instance" "server" {
   associate_public_ip_address = true
 
   # First-boot setup (Docker, swap, systemd, the stack). cloud-init runs it only once per
-  # instance, so a changed script replaces the instance. Fine now (no data yet). BEFORE real
-  # data lives on the disk, add user_data_base64 to ignore_changes below so edits never wipe it.
+  # instance. user_data_base64 is in ignore_changes below, so editing the template or the
+  # scripts never replaces the server (and never wipes the data on its disk). The values
+  # here only apply when the instance is first created. To change a running server, use SSM
+  # (see deploy/aws/) or replace it deliberately, after a backup.
   user_data_base64            = base64gzip(local.user_data)
   user_data_replace_on_change = true
 
@@ -47,6 +49,7 @@ resource "aws_instance" "server" {
     # A newer AMI must not replace the server (and its data). Update the OS in place.
     # Also ignore the public-IP flag: a STOPPED instance reports no public IP, which would
     # otherwise look like a change and force a replacement on every plan.
-    ignore_changes = [ami, associate_public_ip_address]
+    # Also ignore user_data_base64: real data now lives on this disk (see above).
+    ignore_changes = [ami, associate_public_ip_address, user_data_base64]
   }
 }
