@@ -8,6 +8,11 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.backend.repository_url
 }
 
+output "ecr_admin_repository_url" {
+  description = "Where the owner pushes the private admin image from the laptop."
+  value       = aws_ecr_repository.admin.repository_url
+}
+
 output "data_bucket" {
   description = "Private bucket for the data move (transfer/) and backups (backups/)."
   value       = aws_s3_bucket.data.bucket

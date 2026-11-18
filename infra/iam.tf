@@ -29,13 +29,13 @@ data "aws_iam_policy_document" "server" {
   }
 
   statement {
-    sid = "EcrPullOneRepo"
+    sid = "EcrPullOwnRepos"
     actions = [
       "ecr:BatchGetImage",
       "ecr:GetDownloadUrlForLayer",
       "ecr:BatchCheckLayerAvailability",
     ]
-    resources = [aws_ecr_repository.backend.arn]
+    resources = [aws_ecr_repository.backend.arn, aws_ecr_repository.admin.arn]
   }
 
   statement {
