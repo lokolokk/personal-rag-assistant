@@ -8,6 +8,11 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.backend.repository_url
 }
 
+output "data_bucket" {
+  description = "Private bucket for the data move (transfer/) and backups (backups/)."
+  value       = aws_s3_bucket.data.bucket
+}
+
 output "server_role_name" {
   description = "Instance role (SSM, ECR pull, /rag/* read)."
   value       = aws_iam_role.server.name

@@ -28,6 +28,18 @@ variable "snapshot_retention" {
   default     = 4
 }
 
+variable "transfer_retention_days" {
+  description = "Days before files under transfer/ in the data bucket delete themselves."
+  type        = number
+  default     = 7
+}
+
+variable "backup_retention_days" {
+  description = "Days before files under backups/ in the data bucket delete themselves."
+  type        = number
+  default     = 90
+}
+
 variable "autostop_minutes" {
   description = "The server shuts itself down this long after the stack starts (safety net)."
   type        = number
