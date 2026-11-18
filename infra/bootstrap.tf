@@ -21,6 +21,7 @@ locals {
     nginx_b64       = base64encode(replace(file("${path.module}/../deploy/live/nginx.conf"), "\r\n", "\n"))
     rag_up_b64      = base64encode(replace(file("${local.aws_dir}/rag-up.sh"), "\r\n", "\n"))
     rag_down_b64    = base64encode(replace(file("${local.aws_dir}/rag-down.sh"), "\r\n", "\n"))
+    rag_backup_b64  = base64encode(replace(file("${local.aws_dir}/rag-backup.sh"), "\r\n", "\n"))
     bootstrap_b64   = base64encode(replace(file("${local.aws_dir}/bootstrap.sh"), "\r\n", "\n"))
   })
 }
