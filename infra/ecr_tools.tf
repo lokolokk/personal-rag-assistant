@@ -1,7 +1,7 @@
-# Private registry for the owner-only admin tool. Its code is not in this repository, so
-# CI cannot build it: the owner builds and pushes it from the laptop (see docs, P5.2).
-resource "aws_ecr_repository" "admin" {
-  name                 = "${var.name_prefix}-admin"
+# Second private registry, for an image that is built on the owner's laptop and is not part of
+# this repository, so CI cannot build it. The owner pushes it by hand.
+resource "aws_ecr_repository" "tools" {
+  name                 = "${var.name_prefix}-tools"
   image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
@@ -14,8 +14,8 @@ resource "aws_ecr_repository" "admin" {
 }
 
 # Only the 5 newest images are kept.
-resource "aws_ecr_lifecycle_policy" "admin" {
-  repository = aws_ecr_repository.admin.name
+resource "aws_ecr_lifecycle_policy" "tools" {
+  repository = aws_ecr_repository.tools.name
 
   policy = jsonencode({
     rules = [{
