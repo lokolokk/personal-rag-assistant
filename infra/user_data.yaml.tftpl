@@ -30,6 +30,10 @@ write_files:
     permissions: "0750"
     encoding: b64
     content: ${rag_down_b64}
+  - path: /opt/rag/bin/rag-backup.sh
+    permissions: "0750"
+    encoding: b64
+    content: ${rag_backup_b64}
   - path: /opt/rag/bin/bootstrap.sh
     permissions: "0750"
     encoding: b64

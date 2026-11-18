@@ -25,6 +25,13 @@ resource "aws_ssm_parameter" "frontend_origin" {
   value = var.frontend_origin
 }
 
+# Name of the private data bucket, so the backup scripts never hard-code it.
+resource "aws_ssm_parameter" "data_bucket" {
+  name  = "/rag/data_bucket"
+  type  = "String"
+  value = aws_s3_bucket.data.bucket
+}
+
 # Master switch for paid Qwen calls. Starts "false" so the first tests spend nothing.
 # Flip it with: aws ssm put-parameter --name /rag/provider_enabled --value true --overwrite
 resource "aws_ssm_parameter" "provider_enabled" {
