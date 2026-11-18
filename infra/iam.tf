@@ -44,6 +44,20 @@ data "aws_iam_policy_document" "server" {
     resources = [local.param_arn, "${local.param_arn}/*"]
   }
 
+  # Data bucket: list it, read the transfer file, write backups. No delete: old files expire
+  # by lifecycle rule, so the server can never erase its own backups.
+  statement {
+    sid       = "DataBucketList"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.data.arn]
+  }
+
+  statement {
+    sid       = "DataBucketReadWrite"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${aws_s3_bucket.data.arn}/transfer/*", "${aws_s3_bucket.data.arn}/backups/*"]
+  }
+
   # SecureStrings are encrypted with the AWS managed SSM key; allow decrypting only through SSM.
   statement {
     sid       = "DecryptViaSsmOnly"
