@@ -53,7 +53,7 @@ and maps citation references to their sources.
 ## Deployment
 
 ```mermaid
-flowchart LR
+flowchart TD
     User["Browser"] --> Pages["Cloudflare Pages<br/>React frontend"]
     Pages -->|HTTPS| Public["ngrok public address"]
 
